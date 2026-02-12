@@ -1,109 +1,136 @@
 """
-CONSPIRACY FINN - X/Twitter Scraper
-====================================
+CONSPIRACY FINN - Alternative Scraper
+======================================
 
-Scraped Verschwörungstheorien von X/Twitter
-Weil normale passiv-aggressive Antworten zu langweilig sind 🛸
+Scraped von öffentlichen Conspiracy-Websites
+Funktioniert robuster als Twitter/Nitter
 """
 
 import requests
+from bs4 import BeautifulSoup
 import json
 import time
 import re
 from datetime import datetime
 
 print("=" * 70)
-print("CONSPIRACY FINN - X/TWITTER SCRAPER")
+print("CONSPIRACY FINN - ALTERNATIVE SCRAPER")
 print("=" * 70)
 print()
-
-
-# WICHTIG: X/Twitter API ist kompliziert und kostenpflichtig geworden
-# ===================================================================
-print("⚠️  HINWEIS: X/Twitter API ist seit 2023 kostenpflichtig!")
-print()
-print("ALTERNATIVE METHODEN:")
-print("-" * 70)
-print("1. Nitter (Twitter ohne Login)")
-print("2. Web Scraping (langsam, kann geblockt werden)")
-print("3. Manuelle Daten-Sammlung")
-print("-" * 70)
+print("Scraped von öffentlichen Quellen ohne API")
 print()
 
 
-# Conspiracy Keywords
-# ===================
-CONSPIRACY_KEYWORDS = [
-    "chemtrails", "flache erde", "flat earth", "illuminati",
-    "neue weltordnung", "nwo", "reptiloiden", "reptilians",
-    "deep state", "big pharma", "5g", "microchip",
-    "fake news", "mainstream media", "msm", "hoax",
-    "false flag", "crisis actors", "wake up", "sheeple",
-    "do your research", "follow the money", "they dont want you to know",
-    "bill gates", "soros", "rothschild", "freemasons"
-]
-
-
-# Nitter Scraping (Twitter ohne API)
-# ===================================
-NITTER_INSTANCES = [
-    "nitter.net",
-    "nitter.poast.org",
-    "nitter.privacydev.net",
-]
-
-def scrape_nitter(query, instance="nitter.net", limit=50):
-    """
-    Scraped Tweets von Nitter (Twitter-Mirror ohne Login)
-    """
-    print(f"\n🔍 Suche nach: '{query}' auf {instance}...")
+def clean_text(text):
+    """Bereinigt Text"""
+    # Entferne HTML entities
+    text = text.replace('&nbsp;', ' ')
+    text = text.replace('&amp;', '&')
+    text = text.replace('&quot;', '"')
     
-    url = f"https://{instance}/search?f=tweets&q={query}"
+    # Entferne URLs
+    text = re.sub(r'http\S+', '', text)
+    
+    # Entferne mehrfache Leerzeichen
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+
+def scrape_reddit_conspiracy():
+    """
+    Scraped r/conspiracy Titles (öffentlich, kein Login)
+    """
+    print("\n📡 Scrape Reddit r/conspiracy...")
+    
+    url = "https://old.reddit.com/r/conspiracy/top.json?limit=100"
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
     
-    tweets = []
+    posts = []
     
     try:
         response = requests.get(url, headers=headers, timeout=30)
         
         if response.status_code == 200:
-            # Simple HTML Parsing (nicht perfekt aber funktioniert)
-            text = response.text
+            data = response.json()
             
-            # Finde Tweet-Texte (sehr basic parsing)
-            tweet_pattern = r'<div class="tweet-content.*?>(.*?)</div>'
-            matches = re.findall(tweet_pattern, text, re.DOTALL)
-            
-            for match in matches[:limit]:
-                # Bereinige HTML
-                clean = re.sub(r'<.*?>', '', match)
-                clean = clean.strip()
+            for post in data['data']['children']:
+                title = post['data']['title']
+                selftext = post['data'].get('selftext', '')
                 
-                if len(clean) > 20 and len(clean) < 280:
-                    tweets.append(clean)
+                # Titel
+                if len(title) > 10 and len(title) < 200:
+                    posts.append(clean_text(title))
+                
+                # Erste Zeile des Posts
+                if selftext:
+                    lines = selftext.split('\n')
+                    for line in lines[:3]:
+                        line = clean_text(line)
+                        if len(line) > 20 and len(line) < 200:
+                            posts.append(line)
+                            break
             
-            print(f"   ✅ {len(tweets)} Tweets gefunden")
+            print(f"   ✅ {len(posts)} Posts gefunden")
         else:
-            print(f"   ❌ HTTP Error: {response.status_code}")
-            print(f"   💡 Tipp: Nitter-Instanz könnte down sein, versuche eine andere")
+            print(f"   ❌ HTTP {response.status_code}")
     
     except Exception as e:
         print(f"   ❌ Fehler: {e}")
     
-    return tweets
+    return posts
 
 
-# Alternative: Vorgefertigter Conspiracy Datensatz
-# =================================================
-def create_manual_conspiracy_dataset():
+def scrape_4chan_x():
     """
-    Erstellt einen manuellen Datensatz mit typischen Conspiracy-Phrasen
-    Falls Scraping nicht funktioniert
+    Scraped 4chan /x/ (Paranormal Board)
+    ACHTUNG: Kann NSFW content enthalten, nur Threads-Titles nehmen
     """
+    print("\n📡 Scrape 4chan /x/ (Paranormal)...")
+    
+    url = "https://a.4cdn.org/x/catalog.json"
+    
+    threads = []
+    
+    try:
+        response = requests.get(url, timeout=30)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            for page in data:
+                for thread in page.get('threads', []):
+                    # Nur Subject/Topic nehmen (sicherer)
+                    subject = thread.get('sub', '')
+                    comment = thread.get('com', '')
+                    
+                    if subject:
+                        subject = clean_text(subject)
+                        subject = re.sub(r'<.*?>', '', subject)
+                        if len(subject) > 10 and len(subject) < 150:
+                            threads.append(subject)
+            
+            print(f"   ✅ {len(threads)} Threads gefunden")
+        else:
+            print(f"   ❌ HTTP {response.status_code}")
+    
+    except Exception as e:
+        print(f"   ❌ Fehler: {e}")
+    
+    return threads
+
+
+def create_extended_manual_dataset():
+    """
+    Erweiterter manueller Datensatz
+    Mehr und vielfältigere Conspiracy-Phrasen
+    """
+    
     conspiracy_data = [
+        # Klassische Conspiracy Phrasen
         "Wacht auf Leute!",
         "Die wollen dass ihr das glaubt.",
         "Macht eure eigene Recherche!",
@@ -114,102 +141,137 @@ def create_manual_conspiracy_dataset():
         "Das ist nur die Spitze des Eisbergs.",
         "Sie kontrollieren alles.",
         "Die Wahrheit wird unterdrückt.",
-        "Das ist kein Zufall.",
-        "Oeffnet eure Augen!",
-        "Die Elite will nicht dass ihr das wisst.",
-        "Das steckt System dahinter.",
-        "Alles ist miteinander verbunden.",
-        "Schafe werden das nie verstehen.",
-        "Die Zeichen sind überall.",
-        "Das wurde schon vor Jahren geplant.",
-        "Nichts passiert zufällig.",
-        "Sie lügen euch an.",
-        "Das Volk wird manipuliert.",
-        "Cui bono? Wem nützt es?",
-        "Die wollen uns alle kontrollieren.",
-        "Das ist ein Ablenkungsmanöver.",
-        "Dahinter steckt eine Agenda.",
-        "Die Eliten wissen Bescheid.",
-        "Das wird vertuscht.",
-        "Informiert euch selbst!",
-        "Glaubt nicht alles was man euch erzählt.",
+        
+        # Verschwörungstheoretiker Klassiker
+        "Die Chemtrails sind überall.",
+        "Die Erde ist nicht rund.",
+        "Die Echsenmenschen regieren uns.",
+        "Niemand war auf dem Mond.",
+        "Das wurde in einem Studio gefilmt.",
+        "Die Illuminati stecken dahinter.",
+        "Die neue Weltordnung kommt.",
+        "Das ist Teil des großen Plans.",
+        "Sie wollen uns alle chippen.",
+        "5G macht uns krank.",
+        
+        # Typische Argumentationsmuster
+        "Cui bono? Wer profitiert davon?",
         "Das passt zu perfekt zusammen.",
-        "Sie haben Angst dass die Wahrheit rauskommt.",
-        "Das ist koordiniert.",
-        "Alles nach Plan.",
-        "Die Timeline passt zu gut.",
-        "Das ist gewollt so.",
-        "Zufall gibt es nicht.",
-        "Die verstecken etwas.",
-        "Denkt selbst nach!",
-        "Das ergibt keinen Sinn... oder doch?",
-        "Sehr verdächtig das Ganze.",
-        "Das ist doch offensichtlich.",
-        "Sie halten uns für dumm.",
-        "Das wird noch rauskommen.",
-        "Die Beweise sind überall.",
-        "Wer profitiert davon?",
-        "Das ist nur Propaganda.",
-        "Sie wollen uns spalten.",
-        "Teile und herrsche.",
-        "Das Muster ist eindeutig.",
-        "So naiv kann man doch nicht sein.",
-        "Macht die Augen auf!",
-        "Das ist alles Theater.",
-        "Sie lenken uns ab.",
-        "Die Wahrheit liegt auf der Hand.",
-        "Das wird verschwiegen.",
-        "Zufall? Niemals!",
-        "Sie haben einen Plan.",
-        "Das ist orchestriert von oben.",
-        "Die Masse schläft noch.",
-        "Bald wird alles rauskommen.",
-        "Die Beweise stapeln sich.",
-        "Das ist doch klar ersichtlich.",
-        "Sie fürchten die Wahrheit.",
-        "Das Establishment will das nicht.",
-        "Fragt euch mal warum.",
-        "Das timing ist perfekt.",
+        "Die Timeline ist verdächtig.",
         "Zu viele Zufälle.",
-        "Das stinkt doch zum Himmel.",
-        "Die Fakten sprechen für sich.",
-        "Man muss nur die Punkte verbinden.",
-        "Das ist alles inszeniert.",
-        "Die Antworten sind da draussen.",
-        "Sie unterschätzen uns.",
-        "Das kommt nicht von ungefähr.",
-        "Fragt die richtigen Fragen!",
-        "Das System ist korrupt.",
-        "Die Lügen werden aufgedeckt.",
-        "Alles kommt ans Licht.",
-        "Die Zeit der Wahrheit kommt.",
-        "Sie können es nicht mehr verstecken.",
-        "Das Kartenhaus fällt bald.",
-        "Die Menschen wachen auf.",
-        "Es ist alles miteinander verknüpft.",
-        "Das ist größer als ihr denkt.",
-        "Schaut hinter die Fassade.",
-        "Nichts ist wie es scheint.",
-        "Die Realität ist anders.",
-        "Sie lügen uns seit Jahren an.",
-        "Das ist der Beweis!",
-        "Endlich sehen es mehr Leute.",
-        "Das haben sie gut versteckt.",
-        "Aber die Wahrheit siegt.",
-        "Sie verlieren die Kontrolle.",
-        "Das System bröckelt.",
-        "Jetzt wird aufgeräumt.",
-        "Die Masken fallen.",
-        "Glaubt nicht alles blind.",
+        "Das ergibt keinen Sinn.",
+        "Sie halten uns für dumm.",
+        "Das Muster ist eindeutig.",
+        "Verbindet die Punkte!",
+        "Schaut hinter den Vorhang.",
+        "Die Zeichen sind überall.",
+        
+        # Aufforderungen
+        "Öffnet eure Augen!",
+        "Denkt selbst nach!",
         "Hinterfragt alles!",
-        "Das ist nur die offizielle Version.",
-        "Die wahre Geschichte ist anders.",
+        "Informiert euch selbst!",
+        "Lasst euch nicht täuschen!",
+        "Glaubt nicht alles blind.",
+        "Recherchiert selbst!",
+        "Wacht endlich auf!",
+        
+        # Behauptungen über "Die"
+        "Sie lügen uns an.",
+        "Sie verstecken die Wahrheit.",
+        "Sie haben Angst.",
+        "Sie verlieren die Kontrolle.",
+        "Sie wollen uns spalten.",
+        "Sie fürchten uns.",
+        "Sie können es nicht mehr verstecken.",
+        "Sie unterschätzen das Volk.",
+        
+        # Über "die Wahrheit"
+        "Die Wahrheit kommt ans Licht.",
+        "Die Wahrheit ist da draußen.",
+        "Die Wahrheit wird siegen.",
+        "Die Wahrheit lässt sich nicht unterdrücken.",
+        "Die Wahrheit ist offensichtlich.",
+        "Die Wahrheit liegt auf der Hand.",
+        
+        # Mysteriöse Aussagen
+        "Das ist größer als ihr denkt.",
+        "Das ist erst der Anfang.",
+        "Bald wird alles klar sein.",
+        "Es kommt alles raus.",
+        "Die Zeit ist nah.",
+        "Das Kartenhaus fällt bald.",
+        "Der Sturm kommt.",
+        "Nichts ist wie es scheint.",
+        
+        # Über Medien
+        "Die Medien lügen.",
+        "Das wird zensiert.",
+        "Mainstream Propaganda.",
+        "Die Presse ist gekauft.",
+        "Fake News überall.",
+        "Kontrollierte Opposition.",
+        "Gelenkte Berichterstattung.",
+        
+        # Pseudo-wissenschaftlich
+        "Die Studien wurden manipuliert.",
+        "Die Daten sprechen für sich.",
+        "Die Zahlen lügen nicht.",
+        "Die Beweise sind eindeutig.",
+        "Die Fakten werden ignoriert.",
+        "Die Wissenschaft wird unterdrückt.",
+        
+        # Über "das System"
+        "Das System ist korrupt.",
+        "Das System bröckelt.",
+        "Das System fürchtet uns.",
+        "Das System kollabiert.",
+        "Das System lügt.",
+        
+        # Gruppenzugehörigkeit
+        "Wir sind nicht allein.",
+        "Immer mehr wachen auf.",
+        "Die Menschen erkennen es.",
+        "Wir sind die Mehrheit.",
+        "Zusammen sind wir stark.",
+        
+        # Dramatische Wendungen
+        "Es geht um alles.",
+        "Es ist fünf vor zwölf.",
+        "Wir haben keine Zeit mehr.",
+        "Jetzt oder nie.",
+        "Der Kampf hat begonnen.",
+        
+        # Klassische Verschwörungen
+        "9/11 war ein Inside Job.",
+        "JFK wurde ermordet von der CIA.",
+        "Area 51 versteckt Aliens.",
+        "Die Mondlandung war fake.",
+        "Chemtrails vergiften uns.",
+        "HAARP kontrolliert das Wetter.",
+        "Reptilienmenschen unter uns.",
+        "Die Bilderberger steuern alles.",
+        
+        # Neue Verschwörungen
+        "5G aktiviert das Mikrochip.",
+        "Bill Gates will uns alle impfen.",
+        "Das Virus ist künstlich.",
+        "Die Pandemie war geplant.",
+        "Lockdowns sind Machtmissbrauch.",
+        
+        # Allgemeine Paranoia
+        "Sie beobachten uns alle.",
+        "Niemand ist sicher.",
+        "Vertraut niemandem.",
+        "Alles ist eine Lüge.",
+        "Nichts ist real.",
+        "Matrix überall.",
     ]
     
     return conspiracy_data
 
 
-# HAUPT-FUNKTION
+# HAUPT-SCRAPING
 # ==============
 print("=" * 70)
 print("🚀 STARTE DATEN-SAMMLUNG")
@@ -218,93 +280,86 @@ print()
 
 all_data = []
 
-# Methode 1: Versuche Nitter
-print("Methode 1: Nitter Scraping")
-print("-" * 70)
+# Methode 1: Reddit
+print("Methode 1: Reddit r/conspiracy")
+reddit_data = scrape_reddit_conspiracy()
+all_data.extend(reddit_data)
+time.sleep(2)
 
-for keyword in CONSPIRACY_KEYWORDS[:5]:  # Erste 5 Keywords
-    for instance in NITTER_INSTANCES[:2]:  # Erste 2 Instanzen
-        tweets = scrape_nitter(keyword, instance=instance, limit=20)
-        all_data.extend(tweets)
-        time.sleep(2)  # Rate limiting
-        
-        if len(all_data) > 100:
-            break
-    
-    if len(all_data) > 100:
-        break
+# Methode 2: 4chan (optional)
+print("\nMethode 2: 4chan /x/")
+print("⚠️  Möchtest du 4chan scrapen? (kann NSFW sein)")
+user_choice = input("   4chan scrapen? (y/n): ").lower()
+if user_choice == 'y':
+    chan_data = scrape_4chan_x()
+    all_data.extend(chan_data)
+    time.sleep(2)
+else:
+    print("   ⏭️  Übersprungen")
 
-print()
-print(f"📊 Von Nitter: {len(all_data)} Tweets")
-print()
-
-# Methode 2: Manueller Datensatz (Backup)
-print("Methode 2: Manueller Conspiracy Datensatz")
-print("-" * 70)
-
-manual_data = create_manual_conspiracy_dataset()
+# Methode 3: Manueller Datensatz
+print("\nMethode 3: Erweiterter manueller Datensatz")
+manual_data = create_extended_manual_dataset()
 all_data.extend(manual_data)
+print(f"   ✅ {len(manual_data)} manuelle Einträge")
 
-print(f"✅ {len(manual_data)} manuelle Einträge hinzugefügt")
+print()
+print("=" * 70)
+print(f"✅ GESAMT: {len(all_data)} Einträge")
+print("=" * 70)
 print()
 
 # Duplikate entfernen
 all_data = list(set(all_data))
-
-print("=" * 70)
-print(f"✅ TOTAL: {len(all_data)} Einträge gesammelt")
-print("=" * 70)
+print(f"🧹 Nach Deduplizierung: {len(all_data)} einzigartig")
 print()
 
 
 # Speichern
 # =========
 if len(all_data) > 0:
-    print("💾 Speichere Daten...")
+    print("💾 Speichere...")
     
     with open('conspiracy_training_data.txt', 'w', encoding='utf-8') as f:
         for entry in all_data:
             f.write(entry + '\n')
     
-    print("✅ Gespeichert als: conspiracy_training_data.txt")
+    print("✅ conspiracy_training_data.txt")
     
-    # JSON mit Metadaten
+    # JSON
     data_json = {
         'created_at': datetime.now().isoformat(),
         'type': 'conspiracy_theories',
-        'total_entries': len(all_data),
+        'sources': ['reddit', 'manual', '4chan (optional)'],
+        'total': len(all_data),
         'entries': all_data
     }
     
     with open('conspiracy_training_data.json', 'w', encoding='utf-8') as f:
         json.dump(data_json, f, indent=2, ensure_ascii=False)
     
-    print("✅ Gespeichert als: conspiracy_training_data.json")
-    print()
+    print("✅ conspiracy_training_data.json")
     
     # Statistiken
+    print()
     print("=" * 70)
     print("📊 STATISTIKEN")
     print("=" * 70)
-    print(f"Total Einträge: {len(all_data)}")
-    print(f"Total Zeichen: {sum(len(e) for e in all_data)}")
-    print(f"Durchschnitt: {sum(len(e) for e in all_data) / len(all_data):.1f} Zeichen")
-    print()
+    print(f"Einträge: {len(all_data)}")
+    print(f"Zeichen: {sum(len(e) for e in all_data)}")
+    print(f"Ø Länge: {sum(len(e) for e in all_data) / len(all_data):.1f}")
     
     # Beispiele
+    print()
     print("📝 BEISPIELE:")
     print("-" * 70)
-    for i, entry in enumerate(all_data[:15], 1):
+    for i, entry in enumerate(all_data[:20], 1):
         print(f"{i}. {entry}")
     print("-" * 70)
 
 print()
 print("=" * 70)
-print("🎉 FERTIG!")
+print("✅ FERTIG!")
 print("=" * 70)
 print()
-print("Nächster Schritt:")
-print("  python finn_v2_train.py")
-print()
-print("💡 Tipp: Passe finn_v2_train.py an um")
-print("         'conspiracy_training_data.txt' zu laden!")
+print("Nächster Schritt: python conspiracy_train.py")
